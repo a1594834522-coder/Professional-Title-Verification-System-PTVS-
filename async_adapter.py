@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Dict, List, Any, Optional, Callable, Union
 from concurrent.futures import Future, as_completed
+
 try:
     from .queue_manager import queue_manager
 except ImportError:
@@ -110,18 +111,30 @@ class AsyncThreadPoolExecutor:
                 
                 try:
                     from .tasks import process_single_file_task
-                    task = process_single_file_task.apply_async(
-                        args=[file_path, file_index],
-                        kwargs={'priority': priority},
-                        priority=priority,
-                        queue='file_processing'
-                    )
-                    task_id = task.id
+                    # 修复: 使用类型检查确保process_single_file_task有apply_async方法
+                    if hasattr(process_single_file_task, 'apply_async') and callable(getattr(process_single_file_task, 'apply_async', None)):
+                        task = process_single_file_task.apply_async(  # type: ignore
+                            args=[file_path, file_index],
+                            kwargs={'priority': priority},
+                            priority=priority,
+                            queue='file_processing'
+                        )
+                        task_id = task.id
+                    else:
+                        # 如果没有apply_async方法，使用队列管理器的方法
+                        logger.warning("process_single_file_task缺少apply_async方法，使用队列管理器")
+                        # 修复: 使用正确的QueueManager方法
+                        task_id = self.queue_mgr.submit_file_processing_batch(
+                            [file_path], 
+                            priority=priority
+                        )
                 except (ImportError, AttributeError) as e:
                     # 如果导入失败，使用队列管理器的方法
                     logger.warning(f"直接导入任务失败，使用队列管理器: {e}")
-                    task_id = self.queue_mgr.submit_file_processing(
-                        file_path, file_index, priority=priority
+                    # 修复: 使用正确的QueueManager方法
+                    task_id = self.queue_mgr.submit_file_processing_batch(
+                        [file_path], 
+                        priority=priority
                     )
                 
             elif task_type == 'cross_validation':
@@ -241,14 +254,20 @@ class AsyncThreadPoolExecutor:
                     logger.error(f"通用任务执行失败: {e}")
                     raise
             
-            # 提交任务
-            task = generic_task_wrapper.apply_async(
-                args=[getattr(fn, '__name__', str(fn)), args, kwargs],
-                priority=priority,
-                queue='file_processing'
-            )
-            
-            return task.id
+            # 修复: 使用类型检查确保generic_task_wrapper有apply_async方法
+            if hasattr(generic_task_wrapper, 'apply_async') and callable(getattr(generic_task_wrapper, 'apply_async', None)):
+                # 提交任务
+                task = generic_task_wrapper.apply_async(  # type: ignore
+                    args=[getattr(fn, '__name__', str(fn)), args, kwargs],
+                    priority=priority,
+                    queue='file_processing'
+                )
+                
+                return task.id
+            else:
+                logger.error("generic_task_wrapper缺少apply_async方法")
+                # 返回一个错误任务ID
+                return f"failed_generic_{self._task_counter}"
             
         except Exception as e:
             logger.error(f"提交通用任务失败: {e}")

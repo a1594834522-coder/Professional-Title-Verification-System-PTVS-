@@ -307,6 +307,37 @@ class CrossValidator:
         # 所有重试都失败后，抛出最后一个异常
         raise last_exception or Exception(f"API调用失败，已重试{max_retries}次")
 
+    def _smart_truncate_content(self, content: str, max_length: int = 200000, head_size: int = 5000, tail_size: int = 5000) -> str:
+        """
+        智能截取内容：当内容超过max_length时，保留头部head_size字符和尾部tail_size字符
+        
+        Args:
+            content: 要截取的内容
+            max_length: 最大长度阈值，默认200000字符
+            head_size: 头部保留字符数，默认5000字符
+            tail_size: 尾部保留字符数，默认5000字符
+            
+        Returns:
+            截取后的内容
+        """
+        if not content or len(content) <= max_length:
+            return content
+            
+        # 计算省略的字符数
+        omitted_chars = len(content) - head_size - tail_size
+        
+        # 构建截取后的内容
+        head_part = content[:head_size]
+        tail_part = content[-tail_size:] if tail_size > 0 else ""
+        
+        truncated_content = (
+            head_part + 
+            f"\n\n[... 中间省略 {omitted_chars:,} 个字符 ...]\n\n" + 
+            tail_part
+        )
+        
+        return truncated_content
+
     def _safe_basename(self, file_path: str) -> str:
         """安全地获取文件名，确保中文文件名正确显示"""
         try:
@@ -721,29 +752,59 @@ class CrossValidator:
                     future = executor.submit(extract_func, mid, files)
                     future_to_mid[future] = mid
                 
-                # 收集当前阶段结果
+                # 收集当前阶段结果，改进超时处理
                 phase_completed = 0
-                for future in concurrent.futures.as_completed(future_to_mid, timeout=600):  # 10分钟阶段超时
-                    mid = future_to_mid[future]
-                    try:
-                        content = future.result(timeout=180)  # 单任务3分钟超时
-                        if content and len(content.strip()) > 50:
-                            self.materials[mid].is_empty = False
-                            self.materials[mid].content = content
+                unfinished_futures = set(future_to_mid.keys())
+                
+                try:
+                    for future in concurrent.futures.as_completed(future_to_mid, timeout=600):  # 10分钟阶段超时
+                        mid = future_to_mid[future]
+                        unfinished_futures.discard(future)  # 移除已完成的future
+                        
+                        try:
+                            content = future.result(timeout=180)  # 单任务3分钟超时
+                            if content and len(content.strip()) > 50:
+                                self.materials[mid].is_empty = False
+                                self.materials[mid].content = content
+                                phase_completed += 1
+                                total_processed += 1
+                                self._log(f"  ✅ 材料{mid}处理完成 ({phase_completed}/{len(materials_group)}): {len(content.strip())}字符")
+                            else:
+                                self._log(f"  ⚠️ 材料{mid}内容过少 ({phase_completed}/{len(materials_group)})")
+                                self.materials[mid].content = content or f"材料{mid}内容为空"
+                                phase_completed += 1
+                                total_processed += 1
+                        except Exception as e:
+                            error_msg = str(e)[:100]
+                            self._log(f"  ❌ 材料{mid}处理失败 ({phase_completed}/{len(materials_group)}): {error_msg}...")
+                            self.materials[mid].content = f"材料{mid}处理失败: {error_msg}"
                             phase_completed += 1
                             total_processed += 1
-                            self._log(f"  ✅ 材料{mid}处理完成 ({phase_completed}/{len(materials_group)}): {len(content.strip())}字符")
-                        else:
-                            self._log(f"  ⚠️ 材料{mid}内容过少 ({phase_completed}/{len(materials_group)})")
-                            self.materials[mid].content = content or f"材料{mid}内容为空"
+                            
+                except concurrent.futures.TimeoutError:
+                    self._log(f"  ⏰ {phase_name}阶段超时，有{len(unfinished_futures)}个任务未完成")
+                    
+                    # 处理未完成的futures
+                    for future in unfinished_futures:
+                        mid = future_to_mid[future]
+                        try:
+                            # 尝试取消未完成的任务
+                            if not future.done():
+                                future.cancel()
+                            self.materials[mid].content = f"材料{mid}处理超时"
                             phase_completed += 1
                             total_processed += 1
-                    except Exception as e:
-                        error_msg = str(e)[:100]
-                        self._log(f"  ❌ 材料{mid}处理失败 ({phase_completed}/{len(materials_group)}): {error_msg}...")
-                        self.materials[mid].content = f"材料{mid}处理失败: {error_msg}"
+                            self._log(f"  ⏰ 材料{mid}超时处理 ({phase_completed}/{len(materials_group)})")
+                        except Exception as e:
+                            self._log(f"  ❌ 材料{mid}超时处理失败: {e}")
+                
+                # 确保所有材料都被处理（兜底处理）
+                for mid in materials_group.keys():
+                    if self.materials[mid].content is None:
+                        self.materials[mid].content = f"材料{mid}未被处理"
                         phase_completed += 1
                         total_processed += 1
+                        self._log(f"  ⚠️ 材料{mid}兜底处理 ({phase_completed}/{len(materials_group)})")
             
             self._log(f"  🏁 {phase_name}完成: {phase_completed}/{len(materials_group)}个材料")
         
@@ -935,10 +996,10 @@ class CrossValidator:
                                     else:
                                         content = f"跳过非PDF文件: {filename}"
                                     
-                                    # 内容长度控制
-                                    if content and len(content) > 40000:
-                                        self._log(f"      ⚠️ 小文件内容过大，截取: {filename} ({len(content)}字符)")
-                                        content = content[:35000] + f"\n\n[注意：小文件内容截取到35K字符]"
+                                    # 内容长度控制（使用头尾截取）
+                                    if content and len(content) > 200000:
+                                        self._log(f"      ⚠️ 小文件内容过大，头尾截取: {filename} ({len(content)}字符)")
+                                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                                     
                                     # 存入缓存
                                     if content and content.strip():
@@ -1124,16 +1185,24 @@ class CrossValidator:
             return 0
     
     def _split_pdf_pages(self, pdf_path: str, pages_per_chunk: int = 5) -> List[Tuple[int, int]]:
-        """将PDF分割成多个页面范围用于并发处理，确保所有页面都被包含"""
+        """将PDF分割成多个页面范围用于并发处理，确保所有页面都被包含（修复版）"""
         try:
             total_pages = self._get_pdf_page_count(pdf_path)
-            if total_pages <= 0:
-                return [(1, 999)]  # 如果无法获取页数，使用默认范围
-            
-            chunks = []
             filename = self._safe_basename(pdf_path)
             
-            # 分片处理，确保所有页面都被包含
+            # 🔧 修复：确保页数检查准确
+            if total_pages <= 0:
+                self._log(f"    - [分片错误] 无法获取有效页数: {filename}")
+                return []  # 返回空列表而不是默认范围
+            
+            if total_pages <= pages_per_chunk:
+                # 如果总页数不超过分片大小，直接返回整个文档
+                self._log(f"    - [分片优化] {total_pages}页≤{pages_per_chunk}页，无需分片")
+                return [(1, total_pages)]
+            
+            chunks = []
+            
+            # 🚀 生成分片，确保完整覆盖
             for start_page in range(1, total_pages + 1, pages_per_chunk):
                 end_page = min(start_page + pages_per_chunk - 1, total_pages)
                 chunks.append((start_page, end_page))
@@ -1142,17 +1211,22 @@ class CrossValidator:
                 page_count = end_page - start_page + 1
                 self._log(f"    - [分片{len(chunks)}] 第{start_page}-{end_page}页（{page_count}页）")
             
-            # 验证分片结果
+            # ✅ 验证分片完整性
             total_covered_pages = sum(end - start + 1 for start, end in chunks)
             if total_covered_pages != total_pages:
-                self._log(f"    - [验证失败] 总页数{total_pages}，但分片覆盖{total_covered_pages}页！")
+                self._log(f"    - [验证失败] 总页数{total_pages}，分片覆盖{total_covered_pages}页！重新生成...")
+                # 重新生成更保守的分片
+                chunks = [(i, min(i + pages_per_chunk - 1, total_pages)) for i in range(1, total_pages + 1, pages_per_chunk)]
+                new_covered = sum(end - start + 1 for start, end in chunks)
+                self._log(f"    - [重新验证] 修正后覆盖{new_covered}页")
             else:
                 self._log(f"    - [验证成功] {filename} 共{total_pages}页，分为{len(chunks)}个分片，全部覆盖")
             
             return chunks
+            
         except Exception as e:
-            self._log(f"    - [错误] PDF分页失败: {self._safe_basename(pdf_path)} - {e}")
-            return [(1, 999)]  # 出错时返回默认范围
+            self._log(f"    - [分片异常] PDF分页失败: {self._safe_basename(pdf_path)} - {e}")
+            return []  # 异常时返回空列表
     
     def _extract_pdf_pages_concurrent(self, pdf_path: str, page_ranges: List[Tuple[int, int]]) -> str:
         """并发处理PDF的不同页面范围，防止内容堆叠（使用任务队列动态分配）"""
@@ -1195,10 +1269,10 @@ class CrossValidator:
                         # 执行任务
                         content = self._extract_single_page_range(pdf_path, start_page, end_page, worker_id)
                         
-                        # 内容长度检查，防止单个分片过大
-                        if len(content) > 80000:  # 如果单个分片超过80K字符
-                            self._log(f"    - [Worker-{worker_id}] 警告: 第{start_page}-{end_page}页内容过大 ({len(content)}字符)，截取防止堆叠")
-                            content = content[:70000] + f"\n\n[注意：单个分片内容过大，已截取70K字符防止堆叠]"
+                        # 内容长度检查，防止单个分片过大（使用头尾截取）
+                        if len(content) > 200000:  # 如果单个分片超过200K字符
+                            self._log(f"    - [Worker-{worker_id}] 警告: 第{start_page}-{end_page}页内容过大 ({len(content)}字符)，头尾截取防止堆叠")
+                            content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                         
                         # 存储结果
                         with results_lock:
@@ -1254,24 +1328,30 @@ class CrossValidator:
             worker.join(timeout=5)  # 最多等待5秒
         
         # 按页面顺序排序并合并结果，确保完整性和连续性
+        if not results:
+            self._log(f"    - [合并错误] 所有分片都处理失败: {filename}")
+            return f"[并发处理失败：所有任务都未能完成] - {filename}"
+        
         sorted_results = sorted(results.items(), key=lambda x: x[1][0])  # 按起始页面排序
         combined_parts = []
         total_length = 0
         max_combined_length = 500000  # 合并后的最大长度限制
         
-        # 检查页面连续性
-        expected_page = page_ranges[0][0] if page_ranges else 1
+        # 检查页面连续性并合并内容
+        expected_page = 1
         missing_pages = []
         
         for task_id, (start_page, content) in sorted_results:
             # 检查页面是否连续
             if start_page > expected_page:
-                missing_pages.extend(range(expected_page, start_page))
+                missing_range = list(range(expected_page, start_page))
+                missing_pages.extend(missing_range)
+                self._log(f"    - [连续性检查] 缺失页面: {missing_range}")
             
             # 检查合并后长度是否会超限
             if total_length + len(content) > max_combined_length:
                 remaining_space = max_combined_length - total_length
-                if remaining_space > 10000:  # 还有足够空间
+                if remaining_space > 5000:  # 还有足够空间
                     content = content[:remaining_space-1000] + f"\n\n[注意：总长度限制，已截取剩余{remaining_space//1000}K字符]"
                 else:
                     self._log(f"    - [合并] 已达到总长度限制，停止添加更多内容")
@@ -1279,14 +1359,17 @@ class CrossValidator:
             
             # 清理内容中的重复页面标记（如果AI重复了）
             content = self._clean_page_content(content, start_page)
-            
             combined_parts.append(content)
             total_length += len(content)
-            expected_page = start_page + (page_ranges[task_id][1] - page_ranges[task_id][0] + 1)
+            
+            # 更新期望页面
+            task_range = next((r for r in page_ranges if r[0] == start_page), None)
+            if task_range:
+                expected_page = task_range[1] + 1
         
-        # 构建完整的合并内容，添加分页信息
+        # 构建完整的合并内容
         if missing_pages:
-            header = f"[分片处理完成 - 缺失页面: {missing_pages}]\n\n"
+            header = f"[分片处理完成 - 缺失页面: {missing_pages[:10]}{'...' if len(missing_pages) > 10 else ''}]\n\n"
         else:
             header = f"[分片处理完成 - 页面连续]\n\n"
         
@@ -1296,12 +1379,6 @@ class CrossValidator:
         total_tasks = len(page_ranges)
         
         self._log(f"    - [合并] 成功完成 {completed_tasks}/{total_tasks} 个任务，合并内容长度: {len(combined_content)} 字符")
-        
-        if completed_tasks == 0:
-            return f"[并发处理失败：所有任务都未能完成] - {filename}"
-        elif completed_tasks < total_tasks:
-            # 部分任务失败，但有部分成功
-            combined_content += f"\n\n[注意：{total_tasks - completed_tasks}个分片处理失败，以上为部分结果]"
         
         # 最终长度检查
         if len(combined_content) > max_combined_length:
@@ -1435,11 +1512,10 @@ class CrossValidator:
             if response and response.text and response.text.strip():
                 content = response.text.strip()
                 
-                # 检查单个分片内容长度，防止过大
-                if len(content) > 60000:  # 如果单个分片超过60K字符，可能是重复内容
-                    self._log(f"    - [Worker-{worker_id}] 警告: 第{start_page}-{end_page}页内容过大 ({len(content)}字符)，可能存在重复")
-                    # 截取前面的内容，防止堆叠
-                    content = content[:50000] + f"\n\n[注意：超过阈值，已截取前50K字符防止堆叠]"
+                # 检查单个分片内容长度，防止过大（使用头尾截取）
+                if len(content) > 200000:  # 如果单个分片超过200K字符
+                    self._log(f"    - [Worker-{worker_id}] 警告: 第{start_page}-{end_page}页内容过大 ({len(content)}字符)，使用头尾截取")
+                    content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                 
                 # 将结果存入缓存
                 self.cache_manager.set(pdf_path, content, cache_prefix)
@@ -1451,77 +1527,93 @@ class CrossValidator:
             return f"[第{start_page}-{end_page}页处理失败：{error_msg}]"
 
     def _extract_pdf_with_ai(self, pdf_path: str) -> str:
-        """使用Google Gemini AI识别PDF文件内容，智能选择最优处理策略"""
+        """使用Google Gemini AI识别PDF文件内容，智能选择最优处理策略（重构版）"""
         filename = self._safe_basename(pdf_path)
         
-        # 检查文件大小，决定处理策略
+        # 检查文件大小和存在性
         try:
             file_size = os.path.getsize(pdf_path)
             max_upload_size = 100 * 1024 * 1024  # 100MB上限
-            concurrent_threshold = 5 * 1024 * 1024  # 5MB以上启用分片处理
             
             if file_size > max_upload_size:
                 self._log(f"    - [警告] 文件过大 ({file_size/1024/1024:.1f}MB)，超过100MB限制: {filename}")
                 return f"文件过大({file_size/1024/1024:.1f}MB)，超过100MB限制: {filename}"
+                
+            if not os.path.exists(pdf_path):
+                self._log(f"    - [错误] 文件不存在: {filename}")
+                return f"文件不存在: {filename}"
+                
         except Exception as e:
-            self._log(f"    - [错误] 无法获取文件大小: {filename} - {e}")
+            self._log(f"    - [错误] 无法获取文件信息: {filename} - {e}")
             return f"文件访问错误: {filename}"
         
-        # 检查文件是否存在
-        if not os.path.exists(pdf_path):
-            self._log(f"    - [错误] 文件不存在: {filename}")
-            return f"文件不存在: {filename}"
+        # 🚀 重构后的简化策略：只看页数，统一阈值
+        total_pages = self._get_pdf_page_count(pdf_path)
+        api_count = len(self.api_rotator.api_keys)
         
-        # 修正后的处理策略：超过5MB且页数超过15页才启用分片处理
-        if file_size > concurrent_threshold and len(self.api_rotator.api_keys) > 1:
-            # 检查页数是否足够分片处理
-            total_pages = self._get_pdf_page_count(pdf_path)
-            if total_pages > 15:  # 超过15页才启用分片处理
-                self._log(f"    - [策略] 大文件({file_size/1024/1024:.1f}MB, {total_pages}页) + 多个API({len(self.api_rotator.api_keys)}个)：启用页面分片并发处理: {filename}")
-                return self._extract_pdf_with_concurrent_pages(pdf_path)
-            else:
-                self._log(f"    - [策略] 文件较大({file_size/1024/1024:.1f}MB)但页数不多({total_pages}页)：使用File API处理: {filename}")
-                return self._extract_pdf_with_file_api(pdf_path)
-        else:
-            # 小文件或单API：使用直接传输或File API
-            if file_size > 10 * 1024 * 1024:  # 10MB以上使用File API
-                self._log(f"    - [策略] 中等大小文件({file_size/1024/1024:.1f}MB)：使用Google File API处理: {filename}")
-                return self._extract_pdf_with_file_api(pdf_path)
-            else:
-                self._log(f"    - [策略] 小文件({file_size/1024/1024:.1f}MB)：使用直接传输处理: {filename}")
-                return self._extract_pdf_direct_transfer(pdf_path)
+        self._log(f"    - [分析] {filename}: {file_size/1024/1024:.1f}MB, {total_pages}页, {api_count}个API可用")
+        
+        # 🎯 统一分片策略：页数>8页 且 有多个API 才启用分片
+        if total_pages > 8 and api_count > 1:
+            self._log(f"    - [分片策略] {total_pages}页>8页 + {api_count}个API：启用分片并发处理")
+            return self._extract_pdf_with_concurrent_pages(pdf_path)
+        
+        # 📄 非分片策略：选择最适合的单API处理方式
+        elif file_size > 10 * 1024 * 1024:  # >10MB使用File API
+            self._log(f"    - [File API策略] {file_size/1024/1024:.1f}MB>10MB：使用File API处理")
+            return self._extract_pdf_with_file_api(pdf_path)
+        
+        else:  # <=10MB使用直接传输
+            self._log(f"    - [直接传输策略] {file_size/1024/1024:.1f}MB≤10MB：使用直接传输处理")
+            return self._extract_pdf_direct_transfer(pdf_path)
     
     def _extract_pdf_with_concurrent_pages(self, pdf_path: str) -> str:
-        """极简PDF处理策略：只有超过10页才分片，其他全部直接处理 - 效率最大化"""
+        """重构后的分片处理策略：确保正确识别大PDF（修复版）"""
         filename = self._safe_basename(pdf_path)
         
         try:
             # 获取PDF页数
             total_pages = self._get_pdf_page_count(pdf_path)
+            api_count = len(self.api_rotator.api_keys)
             
-            # 🎯 极简策略：只看页数，超过10页就分片，否则直接处理
-            if total_pages <= 10:
-                self._log(f"    - [直接处理] {total_pages}页≤10页，直接处理最高效: {filename}")
+            self._log(f"    - [分片开始] {filename}: {total_pages}页，{api_count}个API")
+            
+            # 🔧 修复分片逻辑：确保页数检查准确
+            if total_pages <= 0:
+                self._log(f"    - [错误] 无法获取页数，降级为直接处理: {filename}")
                 return self._extract_pdf_with_file_api(pdf_path)
             
-            # 📊 超过10页：启动分片处理，让所有API都忙起来！
-            api_count = len(self.api_rotator.api_keys)
-            self._log(f"    - [分片处理] {total_pages}页>10页，启动分片让{api_count}个API全速工作: {filename}")
+            # 🚀 智能分片：根据API数量和页数动态计算最优分片大小
+            # 目标：让每个API都有适量任务，避免空闲
+            target_chunks = api_count * 2  # 每个API分配2个任务
+            optimal_chunk_size = max(2, total_pages // target_chunks)  # 每片最少2页
             
-            # 🚀 智能分片：根据API数量动态分片，确保每个API都有任务
-            optimal_chunk_size = max(3, total_pages // (api_count * 2))  # 每个API至少2个任务
-            if optimal_chunk_size > 8:  # 单个分片不超过8页，防止过大
-                optimal_chunk_size = 8
+            # 限制单个分片不要太大（避免单片处理时间过长）
+            if optimal_chunk_size > 6:
+                optimal_chunk_size = 6
             
+            # 生成页面分片范围
             page_ranges = self._split_pdf_pages(pdf_path, optimal_chunk_size)
             
-            self._log(f"    - [智能分片] {total_pages}页→{len(page_ranges)}个任务(每片≈{optimal_chunk_size}页)，{api_count}个API并发")
+            if not page_ranges:
+                self._log(f"    - [错误] 分片生成失败，降级处理: {filename}")
+                return self._extract_pdf_with_file_api(pdf_path)
             
-            # 🔥 全速并发处理
-            return self._extract_pdf_pages_concurrent(pdf_path, page_ranges)
+            self._log(f"    - [分片配置] {total_pages}页 → {len(page_ranges)}个分片(每片≈{optimal_chunk_size}页) → {api_count}个API并发")
+            
+            # 🔥 执行并发分片处理
+            result = self._extract_pdf_pages_concurrent(pdf_path, page_ranges)
+            
+            # ✅ 验证处理结果
+            if result and len(result.strip()) > 100:
+                self._log(f"    - [分片成功] {filename} 处理完成，提取 {len(result)} 字符")
+                return result
+            else:
+                self._log(f"    - [分片失败] 结果为空或过短，降级处理: {filename}")
+                return self._extract_pdf_with_file_api(pdf_path)
                 
         except Exception as e:
-            self._log(f"    - [错误] 分片失败，降级直接处理: {filename} - {e}")
+            self._log(f"    - [分片异常] 降级为直接处理: {filename} - {str(e)[:100]}")
             return self._extract_pdf_with_file_api(pdf_path)
     
     def _extract_pdf_with_file_api(self, pdf_path: str) -> str:
@@ -1588,10 +1680,10 @@ class CrossValidator:
                     content = response.text.strip()
                     content_length = len(content)
                     
-                    # 内容长度检查，防止过大
-                    if content_length > 200000:  # 200K字符限制
-                        self._log(f"    - [直接传输] 警告: 文件内容较大 ({content_length}字符)，适度截取")
-                        content = content[:180000] + f"\n\n[注意：内容较大，已截取到180K字符防止堆叠]"
+                    # 内容长度检查，防止过大（使用头尾截取）
+                    if content_length > 200000:  # 200K字符阈值
+                        self._log(f"    - [直接传输] 警告: 文件内容过大 ({content_length}字符)，头尾截取")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                         content_length = len(content)
                     
                     self._log(f"    - [直接传输] 处理成功: {filename} (提取 {content_length} 字符)")
@@ -1684,10 +1776,10 @@ class CrossValidator:
                     content = response.text.strip()
                     content_length = len(content)
                     
-                    # 内容长度检查，防止过大
-                    if content_length > 150000:  # 150K字符限制
-                        self._log(f"    - [直接传输] 警告: 文件内容较大 ({content_length}字符)，适度截取")
-                        content = content[:130000] + f"\n\n[注意：内容较大，已截取到130K字符防止堆叠]"
+                    # 内容长度检查，防止过大（使用头尾截取）
+                    if content_length > 200000:  # 200K字符阈值
+                        self._log(f"    - [直接传输] 警告: 文件内容过大 ({content_length}字符)，头尾截取")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                         content_length = len(content)
                     
                     self._log(f"    - [直接传输] 处理成功: {filename} (提取 {content_length} 字符)")
@@ -1793,17 +1885,17 @@ class CrossValidator:
                     if content and content.strip():
                         self.cache_manager.set(file_path, content, cache_prefix)
                 
-                # 根据文件类型调整内容长度控制
+                # 根据文件类型调整内容长度控制（使用新的头尾截取）
                 if content:
-                    if file_type == "大文件" and len(content) > 120000:
-                        self._log(f"      [Worker-{worker_id}] ⚠️ 大文件内容较大，适度截取: {filename} ({len(content)}字符)")
-                        content = content[:100000] + f"\n\n[注意：大文件内容较大，已截取到100K字符]" 
-                    elif file_type == "中等文件" and len(content) > 80000:
-                        self._log(f"      [Worker-{worker_id}] ⚠️ 中等文件内容较大，适度截取: {filename} ({len(content)}字符)")
-                        content = content[:70000] + f"\n\n[注意：中等文件内容较大，已截取到70K字符]"
-                    elif file_type == "小文件" and len(content) > 50000:
-                        self._log(f"      [Worker-{worker_id}] ⚠️ 小文件内容较大，适度截取: {filename} ({len(content)}字符)")
-                        content = content[:40000] + f"\n\n[注意：小文件内容较大，已截取到40K字符]"
+                    if file_type == "大文件" and len(content) > 200000:
+                        self._log(f"      [Worker-{worker_id}] ⚠️ 大文件内容过大，头尾截取: {filename} ({len(content)}字符)")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
+                    elif file_type == "中等文件" and len(content) > 200000:
+                        self._log(f"      [Worker-{worker_id}] ⚠️ 中等文件内容过大，头尾截取: {filename} ({len(content)}字符)")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
+                    elif file_type == "小文件" and len(content) > 200000:
+                        self._log(f"      [Worker-{worker_id}] ⚠️ 小文件内容过大，头尾截取: {filename} ({len(content)}字符)")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                 
                 # 格式化内容
                 if content and content.strip():
@@ -1827,29 +1919,52 @@ class CrossValidator:
                 future = executor.submit(process_single_file_enhanced, file_path, i+1)
                 future_to_file[future] = file_path
             
-            # 收集结果，使用超时机制
+            # 收集结果，使用超时机制（改进版）
             completed_count = 0
-            for future in concurrent.futures.as_completed(future_to_file, timeout=timeout_seconds):
-                file_path = future_to_file[future]
-                filename = self._safe_basename(file_path)
+            unfinished_futures = set(future_to_file.keys())
+            
+            try:
+                for future in concurrent.futures.as_completed(future_to_file, timeout=timeout_seconds):
+                    file_path = future_to_file[future]
+                    filename = self._safe_basename(file_path)
+                    unfinished_futures.discard(future)  # 移除已完成的future
+                    
+                    try:
+                        result = future.result(timeout=30)  # 单个任务超时30秒
+                        with results_lock:
+                            results.append(result)
+                        completed_count += 1
+                        self._log(f"      ✅ {file_type}并发处理完成: {filename} ({completed_count}/{len(files)})")
+                        
+                    except concurrent.futures.TimeoutError:
+                        self._log(f"      ⏰ {file_type}处理超时: {filename}")
+                        with results_lock:
+                            results.append(f"--- {file_type}文件: {filename} ---\n文件处理超时")
+                        completed_count += 1
+                        
+                    except Exception as e:
+                        error_msg = str(e)[:50]
+                        self._log(f"      ❌ {file_type}并发处理失败: {filename} - {error_msg}...")
+                        with results_lock:
+                            results.append(f"--- {file_type}文件: {filename} ---\n文件并发处理失败: {error_msg}")
+                        completed_count += 1
+                        
+            except concurrent.futures.TimeoutError:
+                self._log(f"      ⏰ {file_type}阶段处理超时，有{len(unfinished_futures)}个任务未完成")
                 
-                try:
-                    result = future.result(timeout=30)  # 单个任务超时30秒
-                    with results_lock:
-                        results.append(result)
-                    completed_count += 1
-                    self._log(f"      ✅ {file_type}并发处理完成: {filename} ({completed_count}/{len(files)})")
-                    
-                except concurrent.futures.TimeoutError:
-                    self._log(f"      ⏰ {file_type}处理超时: {filename}")
-                    with results_lock:
-                        results.append(f"--- {file_type}文件: {filename} ---\n文件处理超时")
-                    
-                except Exception as e:
-                    error_msg = str(e)[:50]
-                    self._log(f"      ❌ {file_type}并发处理失败: {filename} - {error_msg}...")
-                    with results_lock:
-                        results.append(f"--- {file_type}文件: {filename} ---\n文件并发处理失败: {error_msg}")
+                # 处理未完成的任务
+                for future in unfinished_futures:
+                    file_path = future_to_file[future]
+                    filename = self._safe_basename(file_path)
+                    try:
+                        if not future.done():
+                            future.cancel()
+                        with results_lock:
+                            results.append(f"--- {file_type}文件: {filename} ---\n文件处理超时")
+                        completed_count += 1
+                        self._log(f"      ⏰ {file_type}超时处理: {filename} ({completed_count}/{len(files)})")
+                    except Exception as e:
+                        self._log(f"      ❌ {file_type}超时处理失败: {filename} - {e}")
         
         self._log(f"      🏁 {file_type}增强并发处理完成: 成功 {completed_count}/{len(files)} 个文件")
         return results
@@ -1932,10 +2047,10 @@ class CrossValidator:
                     if content and content.strip():
                         self.cache_manager.set(file_path, content, cache_prefix)
                 
-                # 内容长度检查
-                if content and len(content) > 80000:
-                    self._log(f"      [Worker-{worker_id}] ⚠️ 大文件内容较大，适度截取: {filename} ({len(content)}字符)")
-                    content = content[:70000] + f"\n\n[注意：大文件内容较大，已截取到70K字符]"
+                # 内容长度检查（使用头尾截取）
+                if content and len(content) > 200000:
+                    self._log(f"      [Worker-{worker_id}] ⚠️ 大文件内容过大，头尾截取: {filename} ({len(content)}字符)")
+                    content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                 
                 # 格式化内容
                 if content and content.strip():
@@ -1964,29 +2079,52 @@ class CrossValidator:
                 future = executor.submit(process_single_large_file, file_path, i+1)
                 future_to_file[future] = file_path
             
-            # 收集结果
+            # 收集结果（改进超时处理）
             completed_count = 0
-            for future in concurrent.futures.as_completed(future_to_file):
-                file_path = future_to_file[future]
-                filename = self._safe_basename(file_path)
+            unfinished_futures = set(future_to_file.keys())
+            
+            try:
+                for future in concurrent.futures.as_completed(future_to_file, timeout=300):  # 5分钟超时
+                    file_path = future_to_file[future]
+                    filename = self._safe_basename(file_path)
+                    unfinished_futures.discard(future)
+                    
+                    try:
+                        result = future.result(timeout=180)  # 3分钟超时
+                        with results_lock:
+                            results.append(result)
+                        completed_count += 1
+                        self._log(f"      ✅ 大文件并发处理完成: {filename} ({completed_count}/{len(large_files)})")
+                        
+                    except concurrent.futures.TimeoutError:
+                        self._log(f"      ⏰ 大文件处理超时: {filename}")
+                        with results_lock:
+                            results.append(f"--- 文件: {filename} ---\n大文件处理超时")
+                        completed_count += 1
+                        
+                    except Exception as e:
+                        error_msg = str(e)[:50]
+                        self._log(f"      ❌ 大文件并发处理失败: {filename} - {error_msg}...")
+                        with results_lock:
+                            results.append(f"--- 文件: {filename} ---\n大文件并发处理失败: {error_msg}")
+                        completed_count += 1
+                        
+            except concurrent.futures.TimeoutError:
+                self._log(f"      ⏰ 大文件阶段超时，有{len(unfinished_futures)}个任务未完成")
                 
-                try:
-                    result = future.result(timeout=180)  # 3分钟超时
-                    with results_lock:
-                        results.append(result)
-                    completed_count += 1
-                    self._log(f"      ✅ 大文件并发处理完成: {filename} ({completed_count}/{len(large_files)})")
-                    
-                except concurrent.futures.TimeoutError:
-                    self._log(f"      ⏰ 大文件处理超时: {filename}")
-                    with results_lock:
-                        results.append(f"--- 文件: {filename} ---\n大文件处理超时")
-                    
-                except Exception as e:
-                    error_msg = str(e)[:50]
-                    self._log(f"      ❌ 大文件并发处理失败: {filename} - {error_msg}...")
-                    with results_lock:
-                        results.append(f"--- 文件: {filename} ---\n大文件并发处理失败: {error_msg}")
+                # 处理未完成的任务
+                for future in unfinished_futures:
+                    file_path = future_to_file[future]
+                    filename = self._safe_basename(file_path)
+                    try:
+                        if not future.done():
+                            future.cancel()
+                        with results_lock:
+                            results.append(f"--- 文件: {filename} ---\n大文件处理超时")
+                        completed_count += 1
+                        self._log(f"      ⏰ 大文件超时处理: {filename} ({completed_count}/{len(large_files)})")
+                    except Exception as e:
+                        self._log(f"      ❌ 大文件超时处理失败: {filename} - {e}")
         
         self._log(f"      🏁 大文件并发处理完成: 成功 {completed_count}/{len(large_files)} 个文件")
         return results
@@ -2034,11 +2172,10 @@ class CrossValidator:
                     content = response.text.strip()
                     content_length = len(content)
                     
-                    # 检查内容长度，防止单个文件过大
-                    if content_length > 100000:  # 如果单个文件超过100K字符，可能是重复内容
-                        self._log(f"    - [AI] 警告: 文件内容过大 ({content_length}字符)，可能存在重复")
-                        # 截取合理长度，防止堆叠
-                        content = content[:80000] + f"\n\n[注意：超过阈值，已截取80K字符防止内容堆叠]"
+                    # 检查内容长度，防止单个文件过大（使用头尾截取）
+                    if content_length > 200000:  # 如果单个文件超过200K字符
+                        self._log(f"    - [AI] 警告: 文件内容过大 ({content_length}字符)，使用头尾截取")
+                        content = self._smart_truncate_content(content, max_length=200000, head_size=5000, tail_size=5000)
                         content_length = len(content)
                     
                     self._log(f"    - [AI] 完整识别成功: {filename} (提取 {content_length} 字符)")
@@ -2313,7 +2450,75 @@ class CrossValidator:
         material.rule_violations = violations
 
     def _extract_core_info(self, material: MaterialInfo) -> Dict[str, Any]:
-        prompt = f"请从这份《{material.name}》材料中，提取核心信息（如姓名、单位、项目、时间等），并以JSON格式返回。\n---材料内容---\n{material.content[:5000] if material.content else '材料内容为空'}"
+        """提取材料核心信息 - 统一提取姓名、工作单位，工作经历材料特殊处理"""
+        
+        # 根据材料类型构建不同的提取规则
+        if material.id == 2:  # 工作经历材料特殊处理
+            prompt = f"""请从这份《{material.name}》材料中，提取以下核心信息并以JSON格式返回：
+
+**统一提取字段**：
+- "姓名": 申请人的姓名
+- "工作单位": 当前或主要工作单位名称
+
+**工作经历特殊字段**：
+- "工作经历详情": 包含每段工作经历的详细信息，格式为数组，每个元素包含:
+  - "起始时间": 开始工作的时间（年月）
+  - "结束时间": 结束工作的时间（年月，如仍在职请标注"至今"）
+  - "工作地点": 工作所在的城市或地区
+  - "单位名称": 具体的工作单位名称
+  - "职务": 在该单位担任的职务
+
+**返回格式示例**：
+{{
+  "姓名": "张三",
+  "工作单位": "某某大学",
+  "工作经历详情": [
+    {{
+      "起始时间": "2018年9月",
+      "结束时间": "2021年7月", 
+      "工作地点": "北京市",
+      "单位名称": "某某科技有限公司",
+      "职务": "软件工程师"
+    }},
+    {{
+      "起始时间": "2021年8月",
+      "结束时间": "至今",
+      "工作地点": "上海市", 
+      "单位名称": "某某大学",
+      "职务": "讲师"
+    }}
+  ]
+}}
+
+---材料内容---
+{material.content[:5000] if material.content else '材料内容为空'}"""
+        else:
+            # 其他材料的通用提取规则
+            prompt = f"""请从这份《{material.name}》材料中，提取以下核心信息并以JSON格式返回：
+
+**必须提取的字段**：
+- "姓名": 申请人的姓名
+- "工作单位": 当前或主要工作单位名称
+
+**可选提取的字段**（如果材料中有相关信息）：
+- "工作单位": 当前或主要工作单位名称
+- "身份证号": 身份证号码（如有）
+- "职务": 职务或职称信息（如有）
+- "专业": 专业领域或学科（如有）
+- "学历": 学历信息（如有）
+- "时间范围": 材料涉及的时间范围（如有）
+
+**返回格式示例**：
+{{
+  "姓名": "张三",
+  "工作单位": "某某大学",
+  "身份证号": "1234567890",
+  "职务": "副教授",
+  "专业": "计算机科学与技术"
+}}
+
+---材料内容---
+{material.content[:5000] if material.content else '材料内容为空'}"""
         
         # 使用API轮询机制
         def ai_call(client):
@@ -2325,22 +2530,231 @@ class CrossValidator:
         try:
             response = self._rotated_api_call(ai_call)
             match = re.search(r'{{.*}}', response.text, re.DOTALL)
-            if match: return json.loads(match.group())
+            if match: 
+                result = json.loads(match.group())
+                # 确保必须字段存在
+                if "姓名" not in result:
+                    result["姓名"] = None
+                if "工作单位" not in result:
+                    result["工作单位"] = None
+                return result
             return {"error": "未提取到JSON格式信息"}
         except Exception as e:
             return {"error": f"核心信息提取失败: {e}"}
 
     def _perform_cross_validation(self, core_infos: Dict[int, Dict]) -> str:
-        report = ""
+        """执行核心信息交叉检验 - 增强版本，支持工作经历详细检验"""
+        report_lines = []
+        
+        # 1. 基本信息一致性检验
+        report_lines.append("### 🔍 基本信息一致性检验")
+        report_lines.append("")
+        
         # 使用字典推导式和并行处理来提高效率
-        all_values = {k: [info[k] for _, info in core_infos.items() if info and k in info] for k in ["姓名", "工作单位", "身份证号"]}
+        all_values = {
+            k: [info.get(k) for _, info in core_infos.items() 
+                if info and not info.get('error') and info.get(k)] 
+            for k in ["姓名", "工作单位", "身份证号"]
+        }
+        
         for key, values in all_values.items():
-            unique_values = set(filter(None, values))
+            if not values:  # 没有发现该字段信息
+                report_lines.append(f"- ℹ️ **{key}**: 未在材料中发现相关信息")
+                continue
+                
+            # 去重并过滤空值
+            unique_values = set(filter(lambda x: x and str(x).strip(), values))
+            
             if len(unique_values) > 1: 
-                report += f"- 🔴 **{key}不一致**: 发现 {unique_values}\n"
+                # 发现不一致
+                if key == "姓名":
+                    priority = "🔴 [极高优先级]"
+                elif key == "身份证号":
+                    priority = "🔴 [极高优先级]"
+                else:
+                    priority = "🟠 [高优先级]"
+                    
+                report_lines.append(f"- {priority} **{key}不一致**: 发现 {len(unique_values)} 种不同值 - {', '.join(map(str, unique_values))}")
             elif unique_values: 
-                report += f"- ✅ **{key}一致**: {list(unique_values)[0]}\n"
-        return report if report else "- ✅ 未发现明显的不一致之处。\n"
+                report_lines.append(f"- ✅ **{key}一致**: {list(unique_values)[0]}")
+        
+        report_lines.append("")
+        
+        # 2. 工作经历详细检验（如果存在工作经历数据）
+        work_experience_data = core_infos.get(2)  # 材料ID=2为工作经历
+        if work_experience_data and not work_experience_data.get('error') and work_experience_data.get('工作经历详情'):
+            report_lines.append("### 📋 工作经历时间逻辑检验")
+            report_lines.append("")
+            
+            work_history = work_experience_data['工作经历详情']
+            if isinstance(work_history, list) and len(work_history) > 0:
+                # 检查时间重叠
+                time_overlap_result = self._check_time_overlap(work_history)
+                report_lines.extend(time_overlap_result)
+                
+                # 检查时间连续性
+                time_continuity_result = self._check_time_continuity(work_history)
+                report_lines.extend(time_continuity_result)
+                
+                # 检查工作地点变迁
+                location_change_result = self._check_location_changes(work_history)
+                report_lines.extend(location_change_result)
+            else:
+                report_lines.append("- ℹ️ **工作经历格式**: 数据格式异常或为空")
+            
+            report_lines.append("")
+        
+        # 3. 数据完整性检验
+        report_lines.append("### 📈 数据完整性检验")
+        report_lines.append("")
+        
+        # 统计信息提取情况
+        total_materials = len([info for info in core_infos.values() if info])
+        successful_extractions = len([info for info in core_infos.values() 
+                                    if info and not info.get('error')])
+        failed_extractions = total_materials - successful_extractions
+        
+        if failed_extractions == 0:
+            report_lines.append(f"- ✅ **信息提取成功率**: 100% ({successful_extractions}/{total_materials})")
+        else:
+            report_lines.append(f"- ⚠️ **信息提取成功率**: {successful_extractions/total_materials*100:.1f}% ({successful_extractions}/{total_materials})")
+            report_lines.append(f"- 🟡 [中优先级] **信息提取失败**: {failed_extractions} 个材料的信息提取失败")
+        
+        # 返回结果
+        final_report = "\n".join(report_lines).strip()
+        return final_report if final_report else "- ✅ 未发现明显的不一致之处。\n"
+    
+    def _check_time_overlap(self, work_history: List[Dict]) -> List[str]:
+        """检查工作时间是否存在重叠"""
+        results = []
+        
+        # 解析并排序时间段
+        time_periods = []
+        for i, job in enumerate(work_history):
+            start_time = self._parse_time_string(job.get('起始时间', ''))
+            end_time = self._parse_time_string(job.get('结束时间', ''))
+            if start_time:
+                time_periods.append({
+                    'index': i,
+                    'start': start_time,
+                    'end': end_time,
+                    'unit': job.get('单位名称', '未知单位'),
+                    'job_title': job.get('职务', '')
+                })
+        
+        # 检查重叠
+        overlaps_found = False
+        for i in range(len(time_periods)):
+            for j in range(i + 1, len(time_periods)):
+                period1, period2 = time_periods[i], time_periods[j]
+                
+                # 判断是否重叠（容忍1个月的交接期）
+                if self._periods_overlap(period1, period2, tolerance_months=1):
+                    overlaps_found = True
+                    overlap_type = "🟠 [高优先级]"
+                    results.append(f"- {overlap_type} **时间重叠**: 《{period1['unit']}》与《{period2['unit']}》存在时间重叠")
+        
+        if not overlaps_found:
+            results.append("- ✅ **时间重叠检查**: 未发现时间重叠问题")
+        
+        return results
+    
+    def _check_time_continuity(self, work_history: List[Dict]) -> List[str]:
+        """检查工作时间的连续性"""
+        results = []
+        
+        # 按时间排序
+        sorted_jobs = []
+        for job in work_history:
+            start_time = self._parse_time_string(job.get('起始时间', ''))
+            if start_time:
+                sorted_jobs.append((start_time, job))
+        
+        sorted_jobs.sort(key=lambda x: x[0])
+        
+        # 检查空白期
+        gaps_found = False
+        for i in range(len(sorted_jobs) - 1):
+            current_job = sorted_jobs[i][1]
+            next_job = sorted_jobs[i + 1][1]
+            
+            current_end = self._parse_time_string(current_job.get('结束时间', ''))
+            next_start = self._parse_time_string(next_job.get('起始时间', ''))
+            
+            if current_end and next_start:
+                gap_months = self._calculate_month_gap(current_end, next_start)
+                if gap_months > 6:  # 超过6个月的空白期
+                    gaps_found = True
+                    results.append(f"- 🟡 [中优先级] **时间空白**: 《{current_job.get('单位名称', '')}》与《{next_job.get('单位名称', '')}》之间存在{gap_months}个月空白期")
+                elif gap_months > 1:
+                    results.append(f"- ⚠️ **短期空白**: 《{current_job.get('单位名称', '')}》与《{next_job.get('单位名称', '')}》之间存在{gap_months}个月间隔")
+        
+        if not gaps_found:
+            results.append("- ✅ **时间连续性**: 工作经历时间连续性良好")
+        
+        return results
+    
+    def _check_location_changes(self, work_history: List[Dict]) -> List[str]:
+        """检查工作地点变迁合理性"""
+        results = []
+        
+        locations = [job.get('工作地点', '') for job in work_history if job.get('工作地点')]
+        unique_locations = list(set(filter(None, locations)))
+        
+        if len(unique_locations) <= 1:
+            results.append("- ✅ **地点变迁**: 工作地点相对稳定")
+        elif len(unique_locations) <= 3:
+            results.append(f"- ℹ️ **地点变迁**: 工作地点包括 {', '.join(unique_locations)}，属于正常范围")
+        else:
+            results.append(f"- 🟢 [低优先级] **地点变迁频繁**: 工作地点较多 ({len(unique_locations)}个)，建议核实变迁原因")
+        
+        return results
+    
+    def _parse_time_string(self, time_str: str) -> Optional[tuple]:
+        """解析时间字符串为(year, month)元组"""
+        if not time_str or time_str == '至今':
+            return None
+        
+        import re
+        # 匹配各种时间格式
+        patterns = [
+            r'(\d{4})年(\d{1,2})月',  # 2020年1月
+            r'(\d{4})\.(\d{1,2})',        # 2020.01
+            r'(\d{4})-(\d{1,2})',        # 2020-01
+            r'(\d{4})/(\d{1,2})',        # 2020/01
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, time_str)
+            if match:
+                year, month = int(match.group(1)), int(match.group(2))
+                return (year, month)
+        
+        return None
+    
+    def _periods_overlap(self, period1: Dict, period2: Dict, tolerance_months: int = 0) -> bool:
+        """判断两个时间段是否重叠"""
+        if not period1['start'] or not period2['start']:
+            return False
+        
+        # 如果某个时间段没有结束时间，表示至今
+        end1 = period1['end'] if period1['end'] else (2024, 12)  # 默认当前时间
+        end2 = period2['end'] if period2['end'] else (2024, 12)
+        
+        # 转换为月份数进行比较
+        start1_months = period1['start'][0] * 12 + period1['start'][1]
+        end1_months = end1[0] * 12 + end1[1]
+        start2_months = period2['start'][0] * 12 + period2['start'][1]
+        end2_months = end2[0] * 12 + end2[1]
+        
+        # 考虑容忍度
+        return not (end1_months + tolerance_months < start2_months or end2_months + tolerance_months < start1_months)
+    
+    def _calculate_month_gap(self, end_time: tuple, start_time: tuple) -> int:
+        """计算两个时间点之间的月份差"""
+        end_months = end_time[0] * 12 + end_time[1]
+        start_months = start_time[0] * 12 + start_time[1]
+        return start_months - end_months - 1  # 减1是因为相邻月份间隔为0
 
     def _assemble_report(self, results: Dict, cross_report: str) -> str:
         """组装模板化报告（严格按照模板格式，不允许AI自由发挥）"""
