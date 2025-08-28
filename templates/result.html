@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审查报告 - 职称评审材料交叉检验系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #1e3c72, #2a5298);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .report-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .report-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .report-title {
+            font-size: 24px;
+            color: #333;
+            margin-left: 10px;
+        }
+        
+        .report-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            line-height: 1.8;
+            font-size: 16px;
+        }
+        
+        /* 报告标题样式 */
+        .report-content .report-h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin: 30px 0 20px 0;
+            padding: 15px 0;
+            border-bottom: 3px solid #3498db;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .report-content .report-h2 {
+            color: #e74c3c;
+            font-size: 22px;
+            margin: 25px 0 15px 0;
+            padding: 10px 15px;
+            background: linear-gradient(90deg, #fff5f5, #ffffff);
+            border-left: 4px solid #e74c3c;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .report-content .report-h3 {
+            color: #f39c12;
+            font-size: 18px;
+            margin: 20px 0 12px 0;
+            padding: 8px 12px;
+            background: linear-gradient(90deg, #fff9e6, #ffffff);
+            border-left: 3px solid #f39c12;
+            border-radius: 0 6px 6px 0;
+        }
+        
+        /* 列表样式 */
+        .report-content .report-list {
+            margin: 15px 0 20px 0;
+            padding-left: 0;
+        }
+        
+        .report-content .report-list li {
+            margin: 12px 0;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #6c757d;
+            list-style: none;
+            position: relative;
+        }
+        
+        .report-content .report-list li:before {
+            content: "▶";
+            color: #6c757d;
+            font-weight: bold;
+            position: absolute;
+            left: -8px;
+            top: 12px;
+        }
+        
+        /* 段落样式 */
+        .report-content .report-paragraph {
+            margin: 15px 0;
+            text-align: justify;
+            text-indent: 2em;
+        }
+        
+        /* 特殊高亮样式 */
+        .highlight-critical {
+            background: linear-gradient(120deg, #ff6b6b, #ee5a52);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+        }
+        
+        .highlight-warning {
+            background: linear-gradient(120deg, #ffa726, #ff9800);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(255, 167, 38, 0.3);
+        }
+        
+        .highlight-success {
+            background: linear-gradient(120deg, #66bb6a, #4caf50);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(102, 187, 106, 0.3);
+        }
+        
+        .filename-highlight {
+            background: linear-gradient(120deg, #42a5f5, #2196f3);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin: 2px;
+            box-shadow: 0 2px 8px rgba(66, 165, 245, 0.3);
+        }
+        
+        /* 表格样式 */
+        .report-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .report-content table th,
+        .report-content table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .report-content table th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .report-content table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        /* 代码块样式 */
+        .report-content code {
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            border: 1px solid #e9ecef;
+        }
+        
+        .report-content pre {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #1e7e34);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(45deg, #6c757d, #545b62);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .btn {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 AI 审查报告</h1>
+            <p>职称评审材料交叉检验结果（Powered by Gemini 2.5 Flash）</p>
+        </div>
+        
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number">{{ pdf_count }}</div>
+                    <div class="stat-label">PDF文件数量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{% if has_excel %}✅{% else %}❌{% endif %}</div>
+                    <div class="stat-label">Excel清单</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">🤖</div>
+                    <div class="stat-label">Gemini 2.5 Flash</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">✅</div>
+                    <div class="stat-label">分析完成</div>
+                </div>
+            </div>
+            
+            <div class="report-container">
+                <div class="report-header">
+                    <span style="font-size: 24px;">📊</span>
+                    <h2 class="report-title">详细审查报告</h2>
+                </div>
+                
+                <div class="report-content">
+                    {{ report|safe }}
+                </div>
+            </div>
+
+            <details class="execution-log-container" style="margin-bottom: 30px;">
+                <summary style="font-size: 18px; color: #333; cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 8px;">⚙️ 查看简略执行日志</summary>
+                <div class="log-content" style="margin-top: 15px; padding: 20px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto;">
+                    <ul>
+                        {% for message in progress_log %}
+                            <li style="list-style-type: none; padding: 2px 0; border-bottom: 1px solid #34495e;">{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </details>
+            
+            <div class="actions">
+                <button onclick="window.print()" class="btn btn-primary">
+                    🖨️ 打印报告
+                </button>
+                <button onclick="downloadReport()" class="btn btn-success">
+                    💾 下载报告
+                </button>
+                <a href="/" class="btn btn-secondary">
+                    🔄 重新分析
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function downloadReport() {
+            const reportContent = document.querySelector('.report-content').innerHTML;
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>职称评审材料审查报告</title>
+                    <style>
+                        body { font-family: 'Microsoft YaHei', Arial, sans-serif; line-height: 1.6; margin: 40px; }
+                        h1, h2, h3 { color: #333; }
+                        h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+                        ul, ol { margin-left: 20px; }
+                        li { margin-bottom: 5px; }
+                        .highlight-critical { background: #ff6b6b; color: white; padding: 2px 6px; border-radius: 3px; }
+                        .highlight-warning { background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; }
+                        .highlight-success { background: #66bb6a; color: white; padding: 2px 6px; border-radius: 3px; }
+                        .filename-highlight { background: #42a5f5; color: white; padding: 4px 8px; border-radius: 15px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>📋 职称评审材料审查报告</h1>
+                    <p><strong>生成时间：</strong>${new Date().toLocaleString('zh-CN')}</p>
+                    <hr>
+                    ${reportContent}
+                </body>
+                </html>
+            `;
+            
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `职称评审审查报告_${new Date().toISOString().slice(0,10)}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>职称评审材料交叉检验系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #1e3c72, #2a5298);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .upload-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .file-input-label {
+            display: block;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .file-input-label:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        
+        .file-input-label.active {
+            background: #e7f3ff;
+            border-color: #007bff;
+            color: #007bff;
+        }
+        
+        .file-list {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .file-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+        }
+        
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-requirements {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .file-requirements h4 {
+            color: #007bff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .file-requirements ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .file-requirements li {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+        
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .loading-details {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .progress-steps {
+            margin-top: 20px;
+            text-align: left;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .step {
+            padding: 8px 0;
+            color: #999;
+            transition: color 0.3s ease;
+        }
+        
+        .step.active {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .step.completed {
+            color: #28a745;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        
+        .flash-message {
+            padding: 12px 20px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .flash-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .features {
+            background: #f8f9fa;
+            padding: 30px;
+            margin-top: 30px;
+        }
+        
+        .features h3 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .feature-item {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .feature-item h4 {
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        
+        .system-status {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #ffffff;
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .system-status h4 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .status-ready {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .system-issues {
+            margin-top: 15px;
+            padding: 12px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+        }
+        
+        .system-issues h5 {
+            color: #856404;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .system-issues ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .system-issues li {
+            font-size: 13px;
+            color: #856404;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>职称评审材料交叉检验系统</h1>
+            <p>基于 Gemini 2.5 Pro 的智能材料审查工具</p>
+        </div>
+        
+        <div class="content">
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for message in messages %}
+                            <div class="flash-message flash-error">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <!-- 系统状态显示 -->
+            {% if system_status %}
+            <div class="system-status">
+                <h4>🚀 系统状态</h4>
+                <div class="status-grid">
+                    <div class="status-item {{ 'status-ready' if system_status.api_key else 'status-error' }}">
+                        {{ '✅' if system_status.api_key else '❌' }} Google API
+                    </div>
+                    <div class="status-item {{ 'status-ready' if system_status.ai_pdf_available else 'status-warning' }}">
+                        {{ '✅' if system_status.ai_pdf_available else '⚠️' }} 混合PDF处理
+                    </div>
+                    <div class="status-item {{ 'status-ready' if system_status.all_ready else 'status-warning' }}">
+                        {{ '✅' if system_status.all_ready else '⚠️' }} 整体状态
+                    </div>
+                </div>
+                
+                {% if system_status.issues %}
+                <div class="system-issues">
+                    <h5>📄 配置提示：</h5>
+                    <ul>
+                        {% for issue in system_status.issues %}
+                        <li>{{ issue }}</li>
+                        {% endfor %}
+                    </ul>
+                    <p style="margin-top: 10px; font-size: 12px;"><strong>解决方案：</strong> 请查看 <code>DEPLOYMENT.md</code> 文档中的安装指导</p>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <!-- 用户会话信息 -->
+            {% if user_info %}
+            <div class="system-status">
+                <h4>👤 用户会话</h4>
+                <div class="status-grid">
+                    <div class="status-item status-ready">
+                        🆔 会话ID: {{ user_info.user_id }}
+                    </div>
+                    <div class="status-item status-ready">
+                        👥 在线用户: {{ user_info.session_count }}
+                    </div>
+                    <div class="status-item status-ready">
+                        📊 使用次数: {{ user_info.upload_count }}
+                    </div>
+                </div>
+                
+                <div class="user-actions" style="margin-top: 15px; text-align: center;">
+                    <button onclick="clearUserData()" class="clear-data-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">🗑️ 清理我的数据</button>
+                    <button onclick="showSessionInfo()" class="session-info-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 10px;">ℹ️ 会话详情</button>
+                </div>
+                
+                <div class="privacy-notice" style="margin-top: 10px; font-size: 11px; color: #666; text-align: center;">
+                    🔒 您的数据完全隔离，其他用户无法访问 • 2小时后自动清理
+                </div>
+            </div>
+            {% endif %}
+            
+            <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+                <div class="upload-section">
+                    <h3>📄 上传PDF文件（方式一）</h3>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="pdf_files" name="pdf_files" class="file-input" multiple accept=".pdf">
+                        <label for="pdf_files" class="file-input-label">
+                            <div>点击选择PDF文件或拖拽文件到此处</div>
+                            <small>支持多个PDF文件，最大200MB，请确保为可编辑文本版PDF</small>
+                        </label>
+                        <div class="file-list" id="pdf_file_list"></div>
+                    </div>
+                    <div class="file-requirements">
+                        <h4>📝 PDF文件要求：</h4>
+                        <ul>
+                            <li>✅ 支持可编辑文本版PDF（推荐）</li>
+                            <li>✅ 支持扫描版PDF（自动OCR识别）</li>
+                            <li>✅ 未加密的PDF文件</li>
+                            <li>✅ 文件完整无损坏</li>
+                            <li>⚠️ 复杂扫描版PDF的OCR识别可能需要更长时间</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="upload-section">
+                    <h3>🗂️ 上传ZIP文件夹（方式二）</h3>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="zip_file" name="zip_file" class="file-input" accept=".zip">
+                        <label for="zip_file" class="file-input-label">
+                            <div>点击选择包含所有PDF的ZIP文件</div>
+                            <small>支持上传整个文件夹，系统会自动提取其中的所有PDF文件</small>
+                        </label>
+                        <div class="file-list" id="zip_file_list"></div>
+                    </div>
+                </div>
+                
+                <div class="upload-section">
+                    <h3>📊 上传Excel清单（可选）</h3>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="excel_file" name="excel_file" class="file-input" accept=".xlsx,.xls">
+                        <label for="excel_file" class="file-input-label">
+                            <div>点击选择Excel文件</div>
+                            <small>用于材料完整性核对</small>
+                        </label>
+                        <div class="file-list" id="excel_file_list"></div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    🚀 开始智能审查
+                </button>
+            </form>
+            
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p id="loading-text">正在进行AI智能分析，请稍候...</p>
+                <div class="loading-details">
+                    <p>预计用时：2-5分钟</p>
+                    <p>请保持页面开启，不要关闭浏览器</p>
+                    <div class="progress-steps">
+                        <div class="step active" id="step1">✅ 正在上传文件...</div>
+                        <div class="step" id="step2">⏳ 正在混合处理PDF（pypdf+AI）...</div>
+                        <div class="step" id="step3">⏳ 正在进行AI交叉分析...</div>
+                        <div class="step" id="step4">⏳ 正在生成报告...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="features">
+            <h3>系统功能特点</h3>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <h4>🔍 交叉验证</h4>
+                    <p>对比不同PDF文件中的相同信息点，检查一致性</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🧠 智能分析</h4>
+                    <p>基于Gemini 2.5 Flash模型，识别不合理或夸大内容</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🔍 OCR识别</h4>
+                    <p>自动识别扫描版PDF，无需手动转换，支持中英文混合识别</p>
+                </div>
+                <div class="feature-item">
+                    <h4>📋 完整性核对</h4>
+                    <p>根据Excel清单检查材料完整性，标识缺失项</p>
+                </div>
+                <div class="feature-item">
+                    <h4>📊 详细报告</h4>
+                    <p>生成结构化审查报告，明确标注问题来源</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 文件选择处理
+        function handleFileSelect(inputId, listId) {
+            const input = document.getElementById(inputId);
+            const list = document.getElementById(listId);
+            const label = input.nextElementSibling;
+            
+            input.addEventListener('change', function() {
+                const files = Array.from(this.files);
+                if (files.length > 0) {
+                    label.classList.add('active');
+                    list.style.display = 'block';
+                    list.innerHTML = files.map(file => {
+                        // 确保中文文件名正确显示
+                        const fileName = file.name || '未知文件';
+                        const fileSize = (file.size/1024/1024).toFixed(2);
+                        return `<div class="file-item">📄 ${fileName} (${fileSize} MB)</div>`;
+                    }).join('');
+                } else {
+                    label.classList.remove('active');
+                    list.style.display = 'none';
+                }
+            });
+        }
+        
+        handleFileSelect('pdf_files', 'pdf_file_list');
+        handleFileSelect('excel_file', 'excel_file_list');
+        handleFileSelect('zip_file', 'zip_file_list');
+        
+        // 表单提交验证
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            const pdfFiles = document.getElementById('pdf_files').files;
+            const zipFile = document.getElementById('zip_file').files;
+            
+            if (pdfFiles.length === 0 && zipFile.length === 0) {
+                e.preventDefault();
+                alert('请选择PDF文件或ZIP文件');
+                return false;
+            }
+            
+            // 预估处理时间
+            const totalFiles = pdfFiles.length + (zipFile.length > 0 ? 10 : 0); // ZIP可能包含多个文件
+            const estimatedTime = Math.max(2, Math.min(10, totalFiles * 0.5)); // 2-10分钟
+            
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('loading').style.display = 'block';
+            document.querySelector('.content').style.opacity = '0.5';
+            
+            // 更新预估时间
+            document.querySelector('.loading-details p').textContent = `预计用时：${estimatedTime}分钟`;
+            
+            // 模拟进度步骤
+            simulateProgress();
+        });
+        
+        function simulateProgress() {
+            const steps = ['step1', 'step2', 'step2b', 'step3', 'step4'];
+            const stepTexts = [
+                '✅ 文件上传完成',
+                '✅ PDF内容提取完成',
+                '✅ OCR识别完成（如需）',
+                '✅ AI分析进行中...',
+                '✅ 报告生成中...'
+            ];
+            
+            // 立即完成第一步
+            setTimeout(() => {
+                document.getElementById('step1').classList.add('completed');
+                document.getElementById('step1').textContent = stepTexts[0];
+                document.getElementById('step2').classList.add('active');
+            }, 500);
+            
+            // 第二步（PDF处理）
+            setTimeout(() => {
+                document.getElementById('step2').classList.remove('active');
+                document.getElementById('step2').classList.add('completed');
+                document.getElementById('step2').textContent = stepTexts[1];
+                document.getElementById('step2b').classList.add('active');
+            }, 3000);
+            
+            // 第二步B（OCR处理）
+            setTimeout(() => {
+                document.getElementById('step2b').classList.remove('active');
+                document.getElementById('step2b').classList.add('completed');
+                document.getElementById('step2b').textContent = stepTexts[2];
+                document.getElementById('step3').classList.add('active');
+            }, 6000);
+            
+            // 第三步（AI分析）
+            setTimeout(() => {
+                document.getElementById('step3').classList.remove('active');
+                document.getElementById('step3').classList.add('completed');
+                document.getElementById('step3').textContent = stepTexts[3];
+                document.getElementById('step4').classList.add('active');
+            }, 12000);
+        }
+        
+        // 拖拽处理
+        document.querySelectorAll('.file-input-label').forEach(label => {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                label.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                label.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                label.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight(e) {
+                label.classList.add('active');
+            }
+            
+            function unhighlight(e) {
+                label.classList.remove('active');
+            }
+            
+            label.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                const input = label.previousElementSibling;
+                input.files = files;
+                input.dispatchEvent(new Event('change'));
+            }
+        });
+        
+        // 用户数据管理功能
+        function clearUserData() {
+            if (confirm('确定要清理您的所有数据吗？\n\n这将删除：\n• 所有上传的文件\n• 分析历史记录\n• 当前会话数据\n\n操作不可撤销！')) {
+                // 创建隐藏表单提交
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/clear_data';
+                form.style.display = 'none';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+        
+        function showSessionInfo() {
+            fetch('/session_info')
+                .then(response => response.json())
+                .then(data => {
+                    const ageMinutes = Math.floor(data.session_age / 60);
+                    const ageHours = Math.floor(ageMinutes / 60);
+                    const displayAge = ageHours > 0 ? `${ageHours}小时${ageMinutes % 60}分钟` : `${ageMinutes}分钟`;
+                    
+                    alert(`👤 用户会话详情\n\n` +
+                          `🆔 会话ID: ${data.user_id}\n` +
+                          `⏰ 会话时长: ${displayAge}\n` +
+                          `📊 使用次数: ${data.upload_count}\n` +
+                          `📁 临时文件: ${data.temp_dirs_count}个\n` +
+                          `👥 在线用户: ${data.total_sessions}人\n\n` +
+                          `🔒 您的数据完全隔离，其他用户无法访问`);
+                })
+                .catch(error => {
+                    alert('获取会话信息失败: ' + error.message);
+                });
+        }
+        
+        // 定期检查会话状态
+        setInterval(() => {
+            fetch('/session_info')
+                .then(response => response.json())
+                .then(data => {
+                    // 更新页面上的用户信息
+                    const sessionElements = document.querySelectorAll('.status-item');
+                    sessionElements.forEach(el => {
+                        if (el.textContent.includes('在线用户')) {
+                            el.innerHTML = `👥 在线用户: ${data.total_sessions}`;
+                        }
+                        if (el.textContent.includes('使用次数')) {
+                            el.innerHTML = `📊 使用次数: ${data.upload_count}`;
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.log('会话状态检查失败:', error);
+                });
+        }, 30000); // 有30秒检查一次
+    </script>
+</body>
+</html>

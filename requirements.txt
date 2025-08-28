@@ -1,0 +1,22 @@
+google-genai>=0.7.0
+flask
+pypdf
+pandas
+openpyxl
+python-dotenv
+werkzeug
+markdown
+markupsafe
+requests
+urllib3
+
+# Async queue system dependencies
+celery>=5.3.0
+redis>=4.5.0
+kombu>=5.3.0
+
+# System monitoring dependencies
+psutil>=5.9.0
+
+# Optional: RabbitMQ alternative
+# rabbitmq-server

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史任务 - 职称评审材料交叉检验系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .nav-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+        
+        .nav-links a:hover {
+            background: #007bff;
+            color: white;
+        }
+        
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-bar select, .filter-bar button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .filter-bar button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .filter-bar button:hover {
+            background: #0056b3;
+        }
+        
+        .stats-section {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .task-list {
+            margin-top: 20px;
+        }
+        
+        .task-item {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            padding: 20px;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .task-item:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .task-id {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .task-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-complete {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-processing {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .task-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-weight: bold;
+        }
+        
+        .task-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state i {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .nav-bar {
+                padding: 15px;
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .task-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+            
+            .task-info {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 历史任务</h1>
+            <p>查看和管理您的任务历史记录</p>
+        </div>
+        
+        <div class="nav-bar">
+            <div class="nav-links">
+                <a href="/">🏠 首页</a>
+                <a href="/history">📋 历史任务</a>
+            </div>
+            
+            <div class="filter-bar">
+                <select id="statusFilter">
+                    <option value="all" {% if current_status == 'all' %}selected{% endif %}>全部状态</option>
+                    <option value="complete" {% if current_status == 'complete' %}selected{% endif %}>已完成</option>
+                    <option value="error" {% if current_status == 'error' %}selected{% endif %}>错误</option>
+                    <option value="processing" {% if current_status == 'processing' %}selected{% endif %}>处理中</option>
+                    <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>等待中</option>
+                </select>
+                <button onclick="refreshTasks()">🔄 刷新</button>
+                <button onclick="showCleanupDialog()">🧹 清理</button>
+            </div>
+        </div>
+        
+        <div class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>总任务数</h3>
+                    <div class="value">{{ stats.total_tasks or 0 }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>成功率</h3>
+                    <div class="value">{{ "%.1f"|format(stats.success_rate_percent or 0) }}%</div>
+                </div>
+                <div class="stat-card">
+                    <h3>平均处理时间</h3>
+                    <div class="value">{{ "%.1f"|format(stats.average_processing_time_seconds or 0) }}s</div>
+                </div>
+                <div class="stat-card">
+                    <h3>最近7天</h3>
+                    <div class="value">{{ stats.recent_tasks_7days or 0 }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>数据库大小</h3>
+                    <div class="value">{{ "%.1f"|format(stats.database_size_mb or 0) }}MB</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div id="taskList" class="task-list">
+                {% if tasks %}
+                    {% for task in tasks %}
+                    <div class="task-item" data-task-id="{{ task.task_id }}">
+                        <div class="task-header">
+                            <div class="task-id">{{ task.task_id }}</div>
+                            <div class="task-status status-{{ task.status }}">
+                                {% if task.status == 'complete' %}✅ 已完成
+                                {% elif task.status == 'error' %}❌ 错误
+                                {% elif task.status == 'processing' %}🔄 处理中
+                                {% elif task.status == 'pending' %}⏳ 等待中
+                                {% else %}❓ {{ task.status }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="task-info">
+                            <div class="info-item">
+                                <div class="info-label">创建时间</div>
+                                <div class="info-value">{{ moment(task.created_at).format('YYYY-MM-DD HH:mm:ss') if task.created_at else '未知' }}</div>
+                            </div>
+                            
+                            <div class="info-item">
+                                <div class="info-label">文件名</div>
+                                <div class="info-value">{{ task.zip_file_name or '未知' }}</div>
+                            </div>
+                            
+                            {% if task.file_size_mb %}
+                            <div class="info-item">
+                                <div class="info-label">文件大小</div>
+                                <div class="info-value">{{ "%.1f"|format(task.file_size_mb) }} MB</div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if task.processing_time_seconds %}
+                            <div class="info-item">
+                                <div class="info-label">处理时间</div>
+                                <div class="info-value">{{ "%.1f"|format(task.processing_time_seconds) }} 秒</div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if task.current_step %}
+                            <div class="info-item">
+                                <div class="info-label">当前步骤</div>
+                                <div class="info-value">{{ task.current_step[:50] }}{% if task.current_step|length > 50 %}...{% endif %}</div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="task-actions">
+                            {% if task.status == 'complete' %}
+                                <a href="/result/{{ task.task_id }}" class="btn btn-primary">📄 查看报告</a>
+                            {% endif %}
+                            
+                            {% if task.status == 'processing' %}
+                                <a href="/status/{{ task.task_id }}" class="btn btn-primary">👀 查看进度</a>
+                            {% endif %}
+                            
+                            {% if task.status in ['error', 'processing'] %}
+                                <button onclick="resumeTask('{{ task.task_id }}')" class="btn btn-warning">🔄 恢复任务</button>
+                            {% endif %}
+                            
+                            <button onclick="deleteTask('{{ task.task_id }}')" class="btn btn-danger">🗑️ 删除</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div style="font-size: 4em; margin-bottom: 20px; opacity: 0.5;">📭</div>
+                        <h3>暂无历史任务</h3>
+                        <p>您还没有任何任务记录</p>
+                        <a href="/" class="btn btn-primary" style="margin-top: 20px;">🚀 开始新任务</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 格式化时间
+        function moment(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return {
+                format: function(format) {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    const seconds = String(date.getSeconds()).padStart(2, '0');
+                    
+                    return format
+                        .replace('YYYY', year)
+                        .replace('MM', month)
+                        .replace('DD', day)
+                        .replace('HH', hours)
+                        .replace('mm', minutes)
+                        .replace('ss', seconds);
+                }
+            };
+        }
+        
+        // 状态过滤
+        document.getElementById('statusFilter').addEventListener('change', function() {
+            const status = this.value;
+            window.location.href = `/history?status=${status}`;
+        });
+        
+        // 刷新任务列表
+        function refreshTasks() {
+            window.location.reload();
+        }
+        
+        // 删除任务
+        function deleteTask(taskId) {
+            if (!confirm('确定要删除这个任务吗？删除后无法恢复。')) {
+                return;
+            }
+            
+            fetch(`/api/task/${taskId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('任务已删除');
+                    // 移除DOM元素
+                    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                    if (taskElement) {
+                        taskElement.remove();
+                    }
+                } else {
+                    alert('删除失败: ' + (data.message || data.error));
+                }
+            })
+            .catch(error => {
+                console.error('删除任务失败:', error);
+                alert('删除失败，请重试');
+            });
+        }
+        
+        // 恢复任务
+        function resumeTask(taskId) {
+            if (!confirm('确定要恢复这个任务吗？')) {
+                return;
+            }
+            
+            fetch(`/api/task/${taskId}/resume`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('任务已恢复，正在重新处理');
+                    window.location.href = `/status/${taskId}`;
+                } else {
+                    alert('恢复失败: ' + (data.message || data.error));
+                }
+            })
+            .catch(error => {
+                console.error('恢复任务失败:', error);
+                alert('恢复失败，请重试');
+            });
+        }
+        
+        // 显示清理对话框
+        function showCleanupDialog() {
+            const days = prompt('请输入要清理多少天前的已完成/错误任务（默认30天）：', '30');
+            if (days === null) return;
+            
+            const daysNum = parseInt(days);
+            if (isNaN(daysNum) || daysNum < 1) {
+                alert('请输入有效的天数');
+                return;
+            }
+            
+            if (!confirm(`确定要清理 ${daysNum} 天前的任务吗？`)) {
+                return;
+            }
+            
+            fetch('/api/cleanup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ days: daysNum })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    refreshTasks();
+                } else {
+                    alert('清理失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('清理失败:', error);
+                alert('清理失败，请重试');
+            });
+        }
+        
+        // 自动刷新处理中的任务
+        setInterval(function() {
+            const processingTasks = document.querySelectorAll('.status-processing');
+            if (processingTasks.length > 0) {
+                // 只刷新处理中的任务状态
+                refreshTasks();
+            }
+        }, 30000); // 30秒刷新一次
+    </script>
+</body>
+</html>

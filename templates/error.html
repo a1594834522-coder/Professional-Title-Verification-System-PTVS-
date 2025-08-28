@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>处理错误 - 职称评审材料交叉检验系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+            text-align: center;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 40px 30px;
+        }
+        
+        .error-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .error-message {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            color: #c53030;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: left;
+            word-break: break-word;
+        }
+        
+        .suggestions {
+            background: #f0f8ff;
+            border: 1px solid #bee3f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        
+        .suggestions h3 {
+            color: #2b6cb0;
+            margin-bottom: 15px;
+        }
+        
+        .suggestions ul {
+            margin-left: 20px;
+            color: #4a5568;
+        }
+        
+        .suggestions li {
+            margin-bottom: 8px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(45deg, #6c757d, #545b62);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="error-icon">⚠️</div>
+            <h1>处理过程中出现错误</h1>
+            <p>很抱歉，系统在处理您的文件时遇到了问题</p>
+        </div>
+        
+        <div class="content">
+            <div class="error-message">
+                <strong>错误信息：</strong><br>
+                {{ error_message }}
+            </div>
+            
+            <div class="suggestions">
+                <h3>💡 解决建议</h3>
+                <ul>
+                    <li><strong>检查文件格式：</strong>确保上传的是有效的PDF文件或ZIP文件</li>
+                    <li><strong>检查文件大小：</strong>单个文件不超过200MB</li>
+                    <li><strong>检查PDF内容：</strong>确保PDF文件包含可提取的文本内容（非纯图片扫描）</li>
+                    <li><strong>检查网络连接：</strong>确保网络连接稳定</li>
+                    <li><strong>重试操作：</strong>稍后再次尝试上传和分析</li>
+                    <li><strong>联系支持：</strong>如果问题持续存在，请联系技术支持</li>
+                </ul>
+            </div>
+            
+            <div class="actions">
+                <a href="javascript:history.back()" class="btn btn-secondary">
+                    ↶ 返回上一页
+                </a>
+                <a href="/" class="btn btn-primary">
+                    🏠 返回首页
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

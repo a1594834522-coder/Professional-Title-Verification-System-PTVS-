@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>正在处理 - 交叉检验系统</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f4f7f6; text-align: center; padding: 40px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        #log-container { 
+            margin-top: 20px; padding: 20px; background: #2c3e50; color: #ecf0f1; 
+            border-radius: 8px; font-family: 'Courier New', monospace; text-align: left; 
+            height: 400px; overflow-y: auto; white-space: pre-wrap; 
+        }
+        .spinner { 
+            border: 4px solid #f3f3f3; border-top: 4px solid #3498db; 
+            border-radius: 50%; width: 40px; height: 40px; 
+            animation: spin 1s linear infinite; margin: 20px auto; 
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #result-link { display: none; margin-top: 20px; padding: 12px 25px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>智能审查正在进行中...</h1>
+        <p>请不要关闭此页面，系统正在后台处理您的文件。</p>
+        <div id="spinner" class="spinner"></div>
+        <div id="log-container"></div>
+        <a id="result-link" href="#">🎉 分析完成，点击查看报告</a>
+    </div>
+
+    <script>
+        const taskId = "{{ task_id }}";
+        const logContainer = document.getElementById('log-container');
+        const resultLink = document.getElementById('result-link');
+        const spinner = document.getElementById('spinner');
+        let logLength = 0;
+
+        function pollStatus() {
+            fetch(`/api/status/${taskId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // 检查数据的有效性
+                    if (!data) {
+                        throw new Error('无效的响应数据');
+                    }
+                    
+                    // 添加调试信息
+                    console.log('收到API响应:', {
+                        status: data.status,
+                        logLength: (data.log || []).length,
+                        hasError: !!data.error
+                    });
+                    
+                    // 确保 log 存在且是数组
+                    const logArray = data.log || [];
+                    
+                    // Append new log messages
+                    if (logArray.length > logLength) {
+                        const newMessages = logArray.slice(logLength).join('\n');
+                        logContainer.textContent += newMessages + '\n';
+                        logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll
+                        logLength = logArray.length;
+                    }
+
+                    if (data.status === 'complete') {
+                        console.log('🎉 任务完成，显示按钮');
+                        spinner.style.display = 'none';
+                        resultLink.href = `/result/${taskId}`;
+                        resultLink.style.display = 'inline-block';
+                        console.log('按钮已设置为显示：', resultLink.style.display);
+                        clearInterval(intervalId);
+                    } else if (data.status === 'error') {
+                        spinner.style.display = 'none';
+                        logContainer.textContent += '\n❌ 任务处理失败，请返回首页重试。';
+                        clearInterval(intervalId);
+                    } else if (data.status === 'not_found') {
+                        spinner.style.display = 'none';
+                        logContainer.textContent += '\n❌ 任务未找到，请返回首页重新开始。';
+                        clearInterval(intervalId);
+                    }
+                })
+                .catch(err => {
+                    console.error('轮询状态错误:', err);
+                    logContainer.textContent += '\n❌ 查询进度失败: ' + err.message;
+                    
+                    // 如果是网络错误，继续重试
+                    if (err.message.includes('fetch') || err.message.includes('network')) {
+                        logContainer.textContent += '\n🔄 网络错误，10秒后重试...';
+                        // 不清除定时器，继续重试
+                    } else {
+                        // 其他错误停止轮询
+                        clearInterval(intervalId);
+                    }
+                });
+        }
+
+        const intervalId = setInterval(pollStatus, 2000); // Poll every 2 seconds
+        pollStatus(); // Initial call
+    </script>
+</body>
+</html>
